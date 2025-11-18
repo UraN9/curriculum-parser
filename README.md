@@ -36,15 +36,16 @@ This section describes the **physical database schema** for the diploma project,
 
 ## Attributes
 
-**LECTURER**: `id`, `full_name`, `email`, `password_hash`, `role`
-**DISCIPLINE**: `id`, `name`, `course`, `ects_credits`, `lecturer_id`
-**SEMESTER**: `id`, `number`, `weeks`, `hours_per_week`
-**SECTION**: `id`, `name`, `discipline_id`, `semester_id`
-**THEME**: `id`, `name`, `section_id`, `total_hours`
-**ACTIVITY**: `id`, `name`, `type_id`, `hours`, `theme_id`, `control_form_id`
-**ACTIVITY_TYPE**: `id`, `name`
-**CONTROL_FORM**: `id`, `name`
+**LECTURER**: `id`, `full_name`, `email`, `password_hash`, `role`<br>
+**DISCIPLINE**: `id`, `name`, `course`, `ects_credits`, `lecturer_id`<br>
+**SEMESTER**: `id`, `number`, `weeks`, `hours_per_week`<br>
+**SECTION**: `id`, `name`, `discipline_id`, `semester_id`<br>
+**THEME**: `id`, `name`, `section_id`, `total_hours`<br>
+**ACTIVITY**: `id`, `name`, `type_id`, `hours`, `theme_id`, `control_form_id`<br>
+**ACTIVITY_TYPE**: `id`, `name`<br>
+**CONTROL_FORM**: `id`, `name`<br>
 **SCHEDULE**: `id`, `day`, `pair_number`, `room`, `activity_id`
+
 
 ---
 
