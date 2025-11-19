@@ -5,18 +5,18 @@ BEGIN;
 -- SET search_path = studies, public;
 
 -- Lookup tables
-CREATE TABLE activity_type (
+CREATE TABLE IF NOT EXISTS activity_type (
     id   INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     name VARCHAR(100) NOT NULL UNIQUE
 );
 
-CREATE TABLE control_form (
+CREATE TABLE IF NOT EXISTS control_form (
     id   INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     name VARCHAR(100) NOT NULL UNIQUE
 );
 
 -- Main tables
-CREATE TABLE lecturer (
+CREATE TABLE IF NOT EXISTS lecturer (
     id            INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     full_name     VARCHAR(200) NOT NULL,
     email         VARCHAR(255) NOT NULL UNIQUE,
@@ -24,7 +24,7 @@ CREATE TABLE lecturer (
     role          VARCHAR(20) NOT NULL CHECK (role IN ('admin','lecturer','viewer'))
 );
 
-CREATE TABLE discipline (
+CREATE TABLE IF NOT EXISTS discipline (
     id           INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     name         VARCHAR(200) NOT NULL,
     course       INT CHECK (course > 0),
@@ -34,14 +34,14 @@ CREATE TABLE discipline (
         REFERENCES lecturer (id) ON UPDATE CASCADE
 );
 
-CREATE TABLE semester (
+CREATE TABLE IF NOT EXISTS semester (
     id             INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     number         INT NOT NULL CHECK (number > 0),
     weeks          INT NOT NULL CHECK (weeks > 0),
     hours_per_week INT NOT NULL CHECK (hours_per_week >= 0)
 );
 
-CREATE TABLE section (
+CREATE TABLE IF NOT EXISTS section (
     id            INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     name          VARCHAR(200) NOT NULL,
     discipline_id INT NOT NULL,
@@ -52,7 +52,7 @@ CREATE TABLE section (
         REFERENCES semester (id) ON UPDATE CASCADE
 );
 
-CREATE TABLE theme (
+CREATE TABLE IF NOT EXISTS theme (
     id          INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     name        VARCHAR(200) NOT NULL,
     section_id  INT NOT NULL,
@@ -61,7 +61,7 @@ CREATE TABLE theme (
         REFERENCES section (id) ON UPDATE CASCADE
 );
 
-CREATE TABLE activity (
+CREATE TABLE IF NOT EXISTS activity (
     id               INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     name             VARCHAR(200) NOT NULL,
     type_id          INT NOT NULL,
@@ -76,11 +76,18 @@ CREATE TABLE activity (
         REFERENCES control_form (id) ON UPDATE CASCADE
 );
 
-CREATE TYPE weekday AS ENUM (
-    'monday','tuesday','wednesday','thursday','friday','saturday','sunday'
-);
+-- Check if enum type 'weekday' exists before creating
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'weekday') THEN
+        CREATE TYPE weekday AS ENUM (
+            'monday','tuesday','wednesday','thursday','friday','saturday','sunday'
+        );
+    END IF;
+END
+$$;
 
-CREATE TABLE schedule (
+CREATE TABLE IF NOT EXISTS schedule (
     id          INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     day         weekday NOT NULL,
     pair_number INT NOT NULL CHECK (pair_number > 0),
@@ -90,13 +97,29 @@ CREATE TABLE schedule (
         REFERENCES activity (id) ON UPDATE CASCADE
 );
 
-CREATE INDEX idx_discipline_lecturer_id ON discipline(lecturer_id);
-CREATE INDEX idx_section_discipline_id ON section(discipline_id);
-CREATE INDEX idx_section_semester_id ON section(semester_id);
-CREATE INDEX idx_theme_section_id ON theme(section_id);
-CREATE INDEX idx_activity_theme_id ON activity(theme_id);
-CREATE INDEX idx_activity_type_id ON activity(type_id);
-CREATE INDEX idx_activity_control_form_id ON activity(control_form_id);
-CREATE INDEX idx_schedule_activity_id ON schedule(activity_id);
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_discipline_lecturer_id 
+    ON discipline(lecturer_id);
+
+CREATE INDEX IF NOT EXISTS idx_section_discipline_id 
+    ON section(discipline_id);
+
+CREATE INDEX IF NOT EXISTS idx_section_semester_id 
+    ON section(semester_id);
+
+CREATE INDEX IF NOT EXISTS idx_theme_section_id 
+    ON theme(section_id);
+
+CREATE INDEX IF NOT EXISTS idx_activity_theme_id 
+    ON activity(theme_id);
+
+CREATE INDEX IF NOT EXISTS idx_activity_type_id 
+    ON activity(type_id);
+
+CREATE INDEX IF NOT EXISTS idx_activity_control_form_id 
+    ON activity(control_form_id);
+
+CREATE INDEX IF NOT EXISTS idx_schedule_activity_id 
+    ON schedule(activity_id);
 
 COMMIT;
