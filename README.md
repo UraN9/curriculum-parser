@@ -8,7 +8,7 @@ Automated ETL system for parsing teacher curriculum Excel files and validating d
 This project includes:
 
 1. **PostgreSQL Database** – physical data schema storing all curriculum-related information.
-
+2. **ETL + CDC Pipeline** – automated import and validation of teacher curriculum Excel files with one-time loading, data transformation and aggregation, as well as real-time tracking of database changes through CDC (Debezium + WAL/binlog).Documentation and UML diagram are available in the [ETL/CDC Service](./etl_service/README.md).
 
 ## Database Schema
 
