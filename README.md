@@ -16,7 +16,78 @@ This section describes the **physical database schema** for the diploma project,
 
 ## ER Diagram
 
-![ER Diagram](images/ER-diagram.png)
+```mermaid
+---
+config:
+  layout: dagre
+  theme: redux-color
+---
+erDiagram
+    LECTURER ||--o{ DISCIPLINE : "teaches<br>1 → N"
+    DISCIPLINE ||--o{ SEMESTER : "has<br>1 → N"
+    DISCIPLINE ||--o{ SECTION : "contains<br>1 → N"
+    SECTION ||--o{ THEME : "includes<br>1 → N"
+    THEME ||--o{ ACTIVITY : "consists_of<br>1 → N"
+    ACTIVITY }o--|| ACTIVITY_TYPE : "is_of_type<br>N → 1"
+    ACTIVITY }o--|| CONTROL_FORM : "has_control<br>N → 1"
+    ACTIVITY ||--o{ SCHEDULE : "scheduled_in<br>1 → N"
+    LECTURER {
+        int id PK
+        string full_name
+        string email_UNIQUE
+        string password_hash
+        string role
+    }
+    DISCIPLINE {
+        int id PK
+        string name
+        int course
+        float ects_credits
+        int lecturer_id FK
+    }
+    SEMESTER {
+        int id PK
+        int number
+        int weeks
+        int hours_per_week
+    }
+    SECTION {
+        int id PK
+        string name
+        int discipline_id FK
+        int semester_id FK
+    }
+    THEME {
+        int id PK
+        string name
+        int section_id FK
+        int total_hours
+    }
+    ACTIVITY {
+        int id PK
+        string name
+        int type_id FK
+        int hours
+        int theme_id FK
+        int control_form_id FK
+    }
+    ACTIVITY_TYPE {
+        int id PK
+        string name
+    }
+    CONTROL_FORM {
+        int id PK
+        string name
+    }
+    SCHEDULE {
+        int id PK
+        string day
+        int pair_number
+        string room
+        int activity_id FK
+    }
+
+```
 
 ---
 
