@@ -1,18 +1,18 @@
-# ETL / CDC Service
+# ⚡ ETL / CDC Service
 
 This module handles automated import and processing of teacher curriculum Excel files, as well as real-time tracking of database changes (CDC).
 
-## Overview
+## 🚀 Overview
 
 The ETL/CDC service performs the following tasks:
 
-* **One-time Excel import** – read the `Plan` sheet, validate data (hours ≥ 0, names filled, totals match).  
-* **Transform & Aggregate** – compute sums, group data by semester and discipline.  
-* **Load & Update Tables** – update database tables and log any errors in `etl_errors`.  
-* **CDC (Change Data Capture)** – capture changes from the database in real-time using Debezium + WAL/binlog.  
-* **Refresh Summary Tables** – update aggregated summary tables for quick access.
+* 📥 **One-time Excel import** – read the `Plan` sheet, validate data (hours ≥ 0, names filled, totals match).  
+* 🔄 **Transform & Aggregate** – compute sums, group data by semester and discipline.  
+* 💾  **Load & Update Tables** – update database tables and log any errors in `etl_errors`.  
+* 🟢 **CDC (Change Data Capture)** – capture changes from the database in real-time using Debezium + WAL/binlog.  
+* 📊 **Refresh Summary Tables** – update aggregated summary tables for quick access.
 
-## Process Flow
+## 🏭 Process Flow
 
 ```mermaid
 flowchart TD

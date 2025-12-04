@@ -1,16 +1,25 @@
-# Curriculum Parser Project
-Automated ETL system for parsing teacher curriculum Excel files and validating data.
+# 🎓 Curriculum Parser Project
+Automated ETL system for parsing teacher curriculum Excel files and validating data 💻.
 
 ---
 
-## Project Overview
+## 🚀 Project Overview
 
 This project includes:
 
-1. **PostgreSQL Database** – physical data schema storing all curriculum-related information.
-2. **ETL + CDC Pipeline** – automated import and validation of teacher curriculum Excel files with one-time loading, data transformation and aggregation, as well as real-time tracking of database changes through CDC (Debezium + WAL/binlog).Documentation and UML diagram are available in the [ETL/CDC Service](./etl_service/README.md).
+1. [**PostgreSQL Database**](./db/schema.sql) – physical data schema storing all curriculum-related information.
+2. [**ETL + CDC Pipeline**](./etl_service/README.md) – automated import and validation of teacher curriculum Excel files with:
+   - One-time loading  
+   - Data transformation and aggregation  
+   - Real-time tracking of database changes via CDC (Debezium + WAL/binlog)
+3. [**ORM Layer (SQLAlchemy 2.0)**](./app/README.md) – modern, type-safe connection between Python and PostgreSQL, including:
+   - 9 entities  
+   - Full constraints (PK, FK, UNIQUE, ENUM)  
+   - Automatic table creation  
+   - **Test lecturer** record to verify proper DB initialization  
+   - Secure `.env` configuration
 
-## Database Schema
+## 🗂️ Database Schema
 
 This section describes the **physical database schema** for the diploma project, including ER-diagram, entities, attributes, relations, data types, and constraints.
 
@@ -91,7 +100,7 @@ erDiagram
 
 ---
 
-## Entities
+## 📌 Entities
 
 * LECTURER
 * DISCIPLINE
@@ -105,7 +114,7 @@ erDiagram
 
 ---
 
-## Attributes
+## 📝 Attributes
 
 **LECTURER**: `id`, `full_name`, `email`, `password_hash`, `role`<br>
 **DISCIPLINE**: `id`, `name`, `course`, `ects_credits`, `lecturer_id`<br>
@@ -120,7 +129,7 @@ erDiagram
 
 ---
 
-## Relations
+## 🔗 Relations
 
 | Entity 1   | Relationship | Entity 2      | Type  |
 | ---------- | ------------ | ------------- | ----- |
@@ -135,7 +144,7 @@ erDiagram
 
 ---
 
-## Data Types
+## 🔢 Data Types
 
 | Attribute       | Type         |
 | --------------- | ------------ |
@@ -166,7 +175,7 @@ erDiagram
 
 ---
 
-## Constraints
+## ✅ Constraints
 
 * Primary Keys: `id` fields in all tables
 * Unique: `LECTURER.email`, `ACTIVITY_TYPE.name`, `CONTROL_FORM.name`
@@ -189,7 +198,7 @@ erDiagram
 
 ---
 
-**Notes:**
+⚠️ **Notes:**
 
 * This documentation serves as a centralized reference for project development.
 
