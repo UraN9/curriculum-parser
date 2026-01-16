@@ -7,10 +7,40 @@ This module handles automated import and processing of teacher curriculum Excel 
 The ETL/CDC service performs the following tasks:
 
 * 📥 **One-time Excel import** – read the `Plan` sheet, validate data (hours ≥ 0, names filled, totals match).  
+* ✅ **Comprehensive Validation** – structured validation with error/warning categorization and detailed reporting.
 * 🔄 **Transform & Aggregate** – compute sums, group data by semester and discipline.  
 * 💾  **Load & Update Tables** – update database tables and log any errors in `etl_errors`.  
 * 🟢 **CDC (Change Data Capture)** – capture changes from the database in real-time using Debezium + WAL/binlog.  
 * 📊 **Refresh Summary Tables** – update aggregated summary tables for quick access.
+
+## ✅ Validation Module
+
+The `validation.py` module provides comprehensive data validation with the following features:
+
+- **Error vs Warning categorization**: Critical errors block processing, warnings are informational
+- **Structured validation reports**: Human-readable output with issue details and row numbers
+- **Multiple check types**:
+  - Negative hours detection
+  - Empty required fields validation
+  - Hour total consistency verification
+  - Non-numeric value detection
+- **Extensible design**: Easy to add new validation rules
+
+### Usage Example
+
+```python
+from validation import validate_plan_data, format_validation_report
+import pandas as pd
+
+df = pd.read_excel("input.xlsx", sheet_name="План", header=None)
+result = validate_plan_data(df)
+print(format_validation_report(result))
+
+if result.is_valid:
+    print("✓ Validation passed - ready for ETL processing")
+else:
+    print(f"✗ Found {result.error_count} critical error(s)")
+```
 
 ## 🏭 Process Flow
 

@@ -332,6 +332,8 @@ def _auto_adjust_column_widths(ws):
         ws.column_dimensions[col_letter].width = max_content_length + width_padding
 
 
+from .validation import validate_plan_data, format_validation_report
+
 # ============================================================================
 # Main Function
 # ============================================================================
@@ -349,8 +351,25 @@ def generate_structure(input_file: str, output_file: str = "Структура.x
         
     Raises:
         FileNotFoundError: If input file does not exist
-        ValueError: If "План" sheet not found in input file
+        ValueError: If "План" sheet not found in input file or validation fails
     """
+    # Load the plan sheet
+    df_plan = pd.read_excel(input_file, sheet_name="План", header=None)
+    
+    # === VALIDATE ===
+    # Validate data integrity before processing
+    validation_result = validate_plan_data(df_plan)
+    
+    # Print validation report
+    print(format_validation_report(validation_result))
+    
+    # Stop if critical errors found
+    if not validation_result.is_valid:
+        raise ValueError(
+            f"Validation failed with {validation_result.error_count} critical error(s). "
+            "Please review and correct the input file."
+        )
+    
     # === EXTRACT ===
     sections, themes, grand_totals = _extract_and_aggregate_data(input_file)
     
@@ -376,7 +395,11 @@ def generate_structure(input_file: str, output_file: str = "Структура.x
     
     # Save workbook
     workbook.save(output_file)
-    print(f"✓ Generation completed! File saved: {output_file}")
+    print(f"\n✓ Generation completed successfully!")
+    print(f"  Output file: {output_file}")
+    print(f"  Sections: {len(sections)}")
+    print(f"  Themes: {len(themes)}")
+    print(f"  Total hours: {grand_totals['total']}")
 
 
 # ============================================================================
