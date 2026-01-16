@@ -42,6 +42,66 @@ else:
     print(f"✗ Found {result.error_count} critical error(s)")
 ```
 
+## 📋 Error Logging Module
+
+The `etl_logger.py` module provides comprehensive error logging to PostgreSQL database:
+
+- **ETL Session tracking**: Each run gets a unique session ID for grouping related errors
+- **Multiple error types**: validation, database, parse, constraint
+- **Error severity levels**: error (blocking), warning (informational), info (diagnostic)
+- **Rich context capture**: row numbers, field names, source data, stack traces
+- **Error retrieval**: Query errors by session or retrieve recent errors
+- **Human-readable reports**: Format errors as structured reports
+
+### Key Functions
+
+```python
+from etl_logger import (
+    ETLSession,
+    log_validation_error,
+    log_database_error,
+    log_parse_error,
+    log_constraint_error,
+    get_session_errors,
+    get_recent_errors,
+    format_error_report
+)
+
+# Create ETL session
+session = ETLSession(file_name="input.xlsx")
+
+# Log errors with rich context
+log_validation_error(
+    db_session=db,
+    message="Total hours mismatch",
+    row_number=42,
+    field_name="total_hours",
+    source_data=100,
+    etl_session_id=session.session_id,
+    file_name="input.xlsx"
+)
+
+# Retrieve and display errors
+errors = get_session_errors(db, session.session_id)
+print(format_error_report(errors, session_id=str(session.session_id)))
+```
+
+### Database Schema
+
+Errors are stored in the `etl_errors` table with the following structure:
+- `id`: Primary key
+- `timestamp`: When error occurred
+- `error_type`: Category (validation, database, parse, constraint, unknown)
+- `severity`: Level (error, warning, info)
+- `row_number`: Excel row if applicable
+- `field_name`: Database/field name
+- `message`: Human-readable error message
+- `source_data`: The problematic data
+- `etl_session_id`: UUID linking to ETL session
+- `file_name`: Source file name
+- `stack_trace`: Full Python stack trace for debugging
+- `resolved`: Flag for error resolution workflow
+
 ## 🏭 Process Flow
 
 ```mermaid

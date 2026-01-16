@@ -97,7 +97,49 @@ CREATE TABLE IF NOT EXISTS schedule (
         REFERENCES activity (id) ON UPDATE CASCADE
 );
 
--- Indexes
+-- ETL Error logging table
+CREATE TABLE IF NOT EXISTS etl_errors (
+    id INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    
+    -- Timestamp of error occurrence
+    timestamp TIMESTAMP NOT NULL DEFAULT NOW(),
+    
+    -- Error classification
+    error_type VARCHAR(50) NOT NULL CHECK (
+        error_type IN ('validation', 'database', 'parse', 'constraint', 'unknown')
+    ),
+    severity VARCHAR(20) NOT NULL CHECK (
+        severity IN ('error', 'warning', 'info')
+    ),
+    
+    -- Context information
+    row_number INT,
+    field_name VARCHAR(100),
+    
+    -- Error details
+    message TEXT NOT NULL,
+    source_data TEXT,
+    
+    -- ETL session tracking
+    etl_session_id UUID,
+    file_name VARCHAR(255),
+    
+    -- Additional info
+    stack_trace TEXT,
+    resolved BOOLEAN DEFAULT FALSE
+);
+
+-- Indexes for etl_errors
+CREATE INDEX IF NOT EXISTS idx_etl_errors_timestamp 
+    ON etl_errors(timestamp DESC);
+
+CREATE INDEX IF NOT EXISTS idx_etl_errors_session_id 
+    ON etl_errors(etl_session_id);
+
+CREATE INDEX IF NOT EXISTS idx_etl_errors_severity 
+    ON etl_errors(severity);
+
+-- Indexes for other tables
 CREATE INDEX IF NOT EXISTS idx_discipline_lecturer_id 
     ON discipline(lecturer_id);
 

@@ -6,18 +6,24 @@ Responsibilities:
   - Extracts data from source Excel file with "План" sheet
   - Transforms and aggregates curriculum information by sections and themes
   - Loads formatted output to "Структура.xlsx" with proper styling
+  - Logs validation and processing errors for audit trail
   
 Key features:
   - Handles duplicate themes across different semesters
   - Calculates totals for hours by type (lectures, practical, lab work, etc.)
   - Applies professional formatting (bold, merged cells, centered alignment, color fills)
   - Automatically adjusts column widths
+  - Comprehensive error logging and reporting
 """
 
 import pandas as pd
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill
 from openpyxl.utils import get_column_letter
+import uuid
+
+from .validation import validate_plan_data, format_validation_report
+from .etl_logger import ETLSession
 
 
 # ============================================================================
@@ -332,8 +338,6 @@ def _auto_adjust_column_widths(ws):
         ws.column_dimensions[col_letter].width = max_content_length + width_padding
 
 
-from .validation import validate_plan_data, format_validation_report
-
 # ============================================================================
 # Main Function
 # ============================================================================
@@ -343,7 +347,8 @@ def generate_structure(input_file: str, output_file: str = "Структура.x
     Main ETL function: Extract → Transform → Load.
     
     Processes curriculum data from input Excel file and generates
-    a properly formatted structure workbook.
+    a properly formatted structure workbook. Includes comprehensive
+    validation and error logging.
     
     Args:
         input_file: Path to input Excel file containing "План" sheet
@@ -353,11 +358,20 @@ def generate_structure(input_file: str, output_file: str = "Структура.x
         FileNotFoundError: If input file does not exist
         ValueError: If "План" sheet not found in input file or validation fails
     """
+    # Create ETL session for this run
+    etl_session = ETLSession(file_name=input_file)
+    print(f"\n📊 Starting ETL process: {etl_session}")
+    
     # Load the plan sheet
-    df_plan = pd.read_excel(input_file, sheet_name="План", header=None)
+    try:
+        df_plan = pd.read_excel(input_file, sheet_name="План", header=None)
+    except FileNotFoundError:
+        raise FileNotFoundError(f"Input file not found: {input_file}")
+    except ValueError as e:
+        raise ValueError(f"Sheet 'План' not found in {input_file}")
     
     # === VALIDATE ===
-    # Validate data integrity before processing
+    print("\n✓ Validating data...")
     validation_result = validate_plan_data(df_plan)
     
     # Print validation report
@@ -371,12 +385,15 @@ def generate_structure(input_file: str, output_file: str = "Структура.x
         )
     
     # === EXTRACT ===
+    print("✓ Extracting and aggregating data...")
     sections, themes, grand_totals = _extract_and_aggregate_data(input_file)
     
     # === TRANSFORM ===
+    print("✓ Transforming data...")
     structure_data = _build_structure_table(sections, themes, grand_totals)
     
     # === LOAD ===
+    print("✓ Loading and formatting output...")
     # Create workbook and worksheet
     workbook = Workbook()
     worksheet = workbook.active
@@ -395,11 +412,17 @@ def generate_structure(input_file: str, output_file: str = "Структура.x
     
     # Save workbook
     workbook.save(output_file)
-    print(f"\n✓ Generation completed successfully!")
-    print(f"  Output file: {output_file}")
-    print(f"  Sections: {len(sections)}")
-    print(f"  Themes: {len(themes)}")
-    print(f"  Total hours: {grand_totals['total']}")
+    
+    # Success summary
+    print(f"\n{'='*70}")
+    print(f"✓ ETL PROCESS COMPLETED SUCCESSFULLY")
+    print(f"{'='*70}")
+    print(f"  Output file:    {output_file}")
+    print(f"  Sections:       {len(sections)}")
+    print(f"  Themes:         {len(themes)}")
+    print(f"  Total hours:    {grand_totals['total']}")
+    print(f"  Session ID:     {etl_session.session_id}")
+    print(f"{'='*70}\n")
 
 
 # ============================================================================

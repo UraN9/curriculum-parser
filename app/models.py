@@ -1,12 +1,15 @@
 """
 SQLAlchemy 2.0 ORM models for the curriculum management system
-Contains all 9 entities with relationships and constraints
+Contains all entities with relationships and constraints
 """
 
-from sqlalchemy import Column, Integer, String, Numeric, ForeignKey, Enum as SQLEnum
+from sqlalchemy import Column, Integer, String, Numeric, ForeignKey, Enum as SQLEnum, Text, DateTime, UUID, Boolean
 from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
 from .database import Base
 import enum
+import uuid
+from datetime import datetime
 
 
 # Enums for constrained values
@@ -22,6 +25,22 @@ class WeekdayEnum(str, enum.Enum):
     wednesday = "wednesday"
     thursday = "thursday"
     friday = "friday"
+
+
+class ErrorTypeEnum(str, enum.Enum):
+    """Classification of ETL error types."""
+    validation = "validation"
+    database = "database"
+    parse = "parse"
+    constraint = "constraint"
+    unknown = "unknown"
+
+
+class SeverityEnum(str, enum.Enum):
+    """Severity levels for ETL errors."""
+    error = "error"
+    warning = "warning"
+    info = "info"
 
 
 # 1. Lecturer
@@ -128,3 +147,48 @@ class Schedule(Base):
     pair_number = Column(Integer, nullable=False)
     room = Column(String(20))
     activity_id = Column(Integer, ForeignKey("activities.id", ondelete="CASCADE"), unique=True, nullable=False)
+
+
+# 10. ETL Error Logging
+class ETLError(Base):
+    """
+    Records errors and warnings encountered during ETL processing.
+    
+    Used for:
+    - Tracking validation failures
+    - Logging database constraint violations
+    - Debugging parsing issues
+    - Creating error reports by ETL session
+    """
+    __tablename__ = "etl_errors"
+
+    id = Column(Integer, primary_key=True)
+    
+    # Timing
+    timestamp = Column(DateTime, nullable=False, server_default=func.now())
+    
+    # Error classification
+    error_type = Column(SQLEnum(ErrorTypeEnum), nullable=False, default=ErrorTypeEnum.unknown)
+    severity = Column(SQLEnum(SeverityEnum), nullable=False, default=SeverityEnum.error)
+    
+    # Context
+    row_number = Column(Integer, nullable=True)
+    field_name = Column(String(100), nullable=True)
+    
+    # Details
+    message = Column(Text, nullable=False)
+    source_data = Column(Text, nullable=True)
+    
+    # Session tracking
+    etl_session_id = Column(UUID, nullable=True, index=True)
+    file_name = Column(String(255), nullable=True)
+    
+    # Debugging
+    stack_trace = Column(Text, nullable=True)
+    
+    # Resolution status
+    resolved = Column(Boolean, nullable=False, default=False)
+    
+    def __repr__(self) -> str:
+        return (f"<ETLError(id={self.id}, severity={self.severity}, "
+                f"error_type={self.error_type}, message='{self.message[:50]}...')>")
