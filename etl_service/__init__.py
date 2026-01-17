@@ -17,6 +17,18 @@ from .etl_logger import (
     get_recent_errors,
     format_error_report
 )
+from .db_loader import (
+    load_activity_types,
+    load_control_forms,
+    find_or_create_semester,
+    save_section,
+    save_theme,
+    save_activity,
+    extract_semester_number,
+    extract_activity_type,
+    extract_control_form,
+    commit_changes
+)
 
 __all__ = [
     "generate_structure",
@@ -31,4 +43,14 @@ __all__ = [
     "get_session_errors",
     "get_recent_errors",
     "format_error_report",
+    "load_activity_types",
+    "load_control_forms",
+    "find_or_create_semester",
+    "save_section",
+    "save_theme",
+    "save_activity",
+    "extract_semester_number",
+    "extract_activity_type",
+    "extract_control_form",
+    "commit_changes",
 ]
