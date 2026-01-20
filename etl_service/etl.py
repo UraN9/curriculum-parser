@@ -34,7 +34,8 @@ from .db_loader import (
     extract_semester_number,
     extract_activity_type,
     extract_control_form,
-    commit_changes
+    commit_changes,
+    refresh_summaries
 )
 from app.database import SessionLocal
 
@@ -562,6 +563,14 @@ def generate_structure(
             commit_changes(db_session)
             print(f"  ✓ Database load completed: {db_stats['sections']} sections, "
                   f"{db_stats['themes']} themes, {db_stats['activities']} activities")
+            
+            # === REFRESH SUMMARY VIEWS ===
+            print("✓ Refreshing summary views...")
+            refresh_result = refresh_summaries(db_session)
+            if refresh_result["success"]:
+                print(f"  ✓ Refreshed {refresh_result['views_refreshed']} materialized views")
+            else:
+                print(f"  ⚠ Summary refresh skipped: {refresh_result['error']}")
             
         except Exception as e:
             db_session.rollback()

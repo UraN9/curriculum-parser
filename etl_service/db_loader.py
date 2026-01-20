@@ -536,3 +536,80 @@ def commit_changes(db_session) -> None:
         error_msg = f"Failed to commit database changes: {str(e)}"
         log_database_error(db_session, error_msg, e)
         raise
+
+
+# ============================================================================
+# Summary Views Refresh
+# ============================================================================
+
+def refresh_summaries(db_session) -> dict:
+    """
+    Refresh all materialized summary views.
+    
+    Calls the PostgreSQL function refresh_all_summaries() which refreshes:
+    - mv_section_summary
+    - mv_theme_summary
+    - mv_activity_type_summary
+    - mv_semester_summary
+    - mv_control_form_summary
+    
+    Args:
+        db_session: SQLAlchemy session
+        
+    Returns:
+        dict with refresh status and any errors
+        
+    Note:
+        Views must be created first by running db/summary_views.sql
+    """
+    from sqlalchemy import text
+    
+    result = {
+        "success": False,
+        "views_refreshed": 0,
+        "error": None
+    }
+    
+    views = [
+        "mv_section_summary",
+        "mv_theme_summary", 
+        "mv_activity_type_summary",
+        "mv_semester_summary",
+        "mv_control_form_summary"
+    ]
+    
+    try:
+        # Try to call the PostgreSQL function first
+        try:
+            db_session.execute(text("SELECT refresh_all_summaries()"))
+            db_session.commit()
+            result["success"] = True
+            result["views_refreshed"] = len(views)
+            return result
+        except Exception:
+            # Function doesn't exist, try refreshing views individually
+            db_session.rollback()
+        
+        # Fallback: refresh each view individually
+        refreshed = 0
+        for view_name in views:
+            try:
+                db_session.execute(text(f"REFRESH MATERIALIZED VIEW {view_name}"))
+                refreshed += 1
+            except Exception as e:
+                # View might not exist yet
+                db_session.rollback()
+                continue
+        
+        if refreshed > 0:
+            db_session.commit()
+            result["success"] = True
+            result["views_refreshed"] = refreshed
+        else:
+            result["error"] = "No views found. Run db/summary_views.sql first."
+            
+    except Exception as e:
+        db_session.rollback()
+        result["error"] = str(e)
+        
+    return result
