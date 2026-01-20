@@ -23,7 +23,7 @@ from openpyxl.utils import get_column_letter
 import uuid
 
 from .validation import validate_plan_data, format_validation_report
-from .etl_logger import ETLSession
+from .etl_logger import ETLSession, log_validation_error, SEVERITY_ERROR, SEVERITY_WARNING
 from .db_loader import (
     load_activity_types,
     load_control_forms,
@@ -430,6 +430,42 @@ def generate_structure(
     
     # Print validation report
     print(format_validation_report(validation_result))
+    
+    # Log validation errors/warnings to database
+    if validation_result.errors or validation_result.warnings:
+        db_session = SessionLocal()
+        try:
+            # Log all errors
+            for issue in validation_result.errors:
+                log_validation_error(
+                    db_session=db_session,
+                    message=issue.message,
+                    row_number=issue.row_number,
+                    field_name=issue.column,
+                    source_data=issue.issue_type,
+                    etl_session_id=etl_session.session_id,
+                    file_name=input_file,
+                    severity=SEVERITY_ERROR
+                )
+            # Log all warnings
+            for issue in validation_result.warnings:
+                log_validation_error(
+                    db_session=db_session,
+                    message=issue.message,
+                    row_number=issue.row_number,
+                    field_name=issue.column,
+                    source_data=issue.issue_type,
+                    etl_session_id=etl_session.session_id,
+                    file_name=input_file,
+                    severity=SEVERITY_WARNING
+                )
+            db_session.commit()
+            print(f"  ✓ Logged {len(validation_result.errors)} errors and {len(validation_result.warnings)} warnings to etl_errors")
+        except Exception as e:
+            db_session.rollback()
+            print(f"  ⚠ Failed to log validation issues to database: {e}")
+        finally:
+            db_session.close()
     
     # Stop if critical errors found
     if not validation_result.is_valid:
