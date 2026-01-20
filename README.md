@@ -1,5 +1,5 @@
 # 🎓 Curriculum Parser Project
-Automated ETL system for parsing teacher curriculum Excel files and validating data 💻.
+Automated ETL system for parsing teacher curriculum Excel files with database integration and change tracking 💻.
 
 ---
 
@@ -8,16 +8,14 @@ Automated ETL system for parsing teacher curriculum Excel files and validating d
 This project includes:
 
 1. [**PostgreSQL Database**](./db/schema.sql) – physical data schema storing all curriculum-related information.
-2. [**ETL + CDC Pipeline**](./etl_service/README.md) – automated import and validation of teacher curriculum Excel files with:
-   - One-time loading  
+2. [**ETL Pipeline**](./etl_service/README.md) – automated import and validation of teacher curriculum Excel files with:
+   - Data extraction from Excel  
+   - Comprehensive validation with error logging
    - Data transformation and aggregation  
-   - Real-time tracking of database changes via CDC (Debezium + WAL/binlog)
-3. [**ORM Layer (SQLAlchemy 2.0)**](./app/README.md) – modern, type-safe connection between Python and PostgreSQL, including:
-   - 9 entities  
-   - Full constraints (PK, FK, UNIQUE, ENUM)  
-   - Automatic table creation  
-   - **Test lecturer** record to verify proper DB initialization  
-   - Secure `.env` configuration
+   - Database loading with UPSERT logic
+   - Materialized Views for summary reports
+3. [**CDC (Change Data Capture)**](./db/cdc_triggers.sql) – real-time tracking of database changes via PostgreSQL Triggers
+4. [**ORM Layer (SQLAlchemy 2.0)**](./app/README.md) – modern, type-safe connection between Python and PostgreSQL
 
 ## 🗂️ Database Schema
 

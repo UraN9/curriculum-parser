@@ -1,17 +1,18 @@
 # ⚡ ETL / CDC Service
 
-This module handles automated import and processing of teacher curriculum Excel files, as well as real-time tracking of database changes (CDC).
+This module handles automated import and processing of teacher curriculum Excel files, as well as tracking of database changes (CDC).
 
 ## 🚀 Overview
 
 The ETL/CDC service performs the following tasks:
 
-* 📥 **One-time Excel import** – read the `Plan` sheet, validate data (hours ≥ 0, names filled, totals match).  
-* ✅ **Comprehensive Validation** – structured validation with error/warning categorization and detailed reporting.
-* 🔄 **Transform & Aggregate** – compute sums, group data by semester and discipline.  
-* 💾  **Load & Update Tables** – update database tables and log any errors in `etl_errors`.  
-* 🟢 **CDC (Change Data Capture)** – capture changes from the database in real-time using Debezium + WAL/binlog.  
-* 📊 **Refresh Summary Tables** – update aggregated summary tables for quick access.
+* 📥 **Extract** – read the `План` sheet from Excel file
+* ✅ **Validate** – comprehensive validation with error/warning categorization and database logging
+* 🔄 **Transform** – compute sums, group data by semester and discipline
+* 📄 **Load to File** – generate formatted `Структура.xlsx` output
+* 💾 **Load to Database** – UPSERT data into PostgreSQL tables
+* 📊 **Refresh Summary** – update 5 Materialized Views for reporting
+* 🟢 **CDC (Change Data Capture)** – capture all changes via PostgreSQL Triggers
 
 ## ✅ Validation Module
 

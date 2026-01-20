@@ -9,3 +9,4 @@ test_db_logging.py
 test_validation.py
 test_error_logging.py
 examples_logging.py
+test_cdc.py
