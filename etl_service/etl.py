@@ -24,6 +24,19 @@ import uuid
 
 from .validation import validate_plan_data, format_validation_report
 from .etl_logger import ETLSession
+from .db_loader import (
+    load_activity_types,
+    load_control_forms,
+    find_or_create_semester,
+    save_section,
+    save_theme,
+    save_activity,
+    extract_semester_number,
+    extract_activity_type,
+    extract_control_form,
+    commit_changes
+)
+from app.database import SessionLocal
 
 
 # ============================================================================
@@ -50,7 +63,7 @@ HOUR_COLUMN_SELF_WORK = 5
 # ============================================================================
 
 def _create_empty_theme() -> dict:
-    """Create a dictionary representing an empty theme with hour counters."""
+    """Create a dictionary representing an empty theme with hour counters and activities list."""
     return {
         "section": None,
         "theme": None,
@@ -59,7 +72,8 @@ def _create_empty_theme() -> dict:
         "practical": 0,
         "lab": 0,
         "individual": 0,
-        "self": 0
+        "self": 0,
+        "activities": []  # List of individual activities for database storage
     }
 
 
@@ -77,8 +91,9 @@ def _extract_and_aggregate_data(input_file: str) -> tuple:
     Returns:
         Tuple of:
         - sections: List of unique section names in order
-        - themes: Dict mapping (section, theme_name) to aggregated hour data
+        - themes: Dict mapping (section, theme_name) to aggregated hour data (includes activities list)
         - grand_totals: Dict with global hour statistics
+        - semester_number: Extracted semester number from file (e.g., 5 from "5 СЕМЕСТР")
     """
     # Load plan sheet without headers
     df_plan = pd.read_excel(input_file, sheet_name="План", header=None)
@@ -97,10 +112,19 @@ def _extract_and_aggregate_data(input_file: str) -> tuple:
     
     current_section = None
     current_theme = None
+    semester_number = None  # Will be extracted from "X СЕМЕСТР" row
+    
+    # Column index for control form (Column G = index 6)
+    CONTROL_FORM_COLUMN = 6
     
     # Parse each row in the plan sheet
     for _, row in df_plan.iterrows():
         label = str(row[0]).strip() if pd.notnull(row[0]) else ""
+        
+        # Detect semester row (e.g., "5 СЕМЕСТР")
+        if "СЕМЕСТР" in label and semester_number is None:
+            semester_number = extract_semester_number(label)
+            continue
         
         # Detect section header
         if label.startswith("РОЗДІЛ"):
@@ -128,18 +152,37 @@ def _extract_and_aggregate_data(input_file: str) -> tuple:
             prac_lab_hours = row[HOUR_COLUMN_PRACTICAL_LAB] if pd.notnull(row[HOUR_COLUMN_PRACTICAL_LAB]) else 0
             self_work_hours = row[HOUR_COLUMN_SELF_WORK] if pd.notnull(row[HOUR_COLUMN_SELF_WORK]) else 0
             
+            # Extract control form from column G
+            control_form_value = row[CONTROL_FORM_COLUMN] if len(row) > CONTROL_FORM_COLUMN else None
+            control_form_id = extract_control_form(control_form_value)
+            
             key = (current_section, current_theme)
             theme_data = themes[key]
             
-            # Aggregate hours by activity type
+            # Determine activity hours based on type
             if label.startswith("Лекція"):
+                activity_hours = int(lectures) if lectures else 0
                 theme_data["lectures"] += lectures
             elif label.startswith(("Практична", "Семінарська")):
+                activity_hours = int(prac_lab_hours) if prac_lab_hours else 0
                 theme_data["practical"] += prac_lab_hours
             elif label.startswith("Лабораторна"):
+                activity_hours = int(prac_lab_hours) if prac_lab_hours else 0
                 theme_data["lab"] += prac_lab_hours
             elif label.startswith("Самостійна"):
+                activity_hours = int(self_work_hours) if self_work_hours else 0
                 theme_data["self"] += self_work_hours
+            else:
+                activity_hours = 0
+            
+            # Store individual activity for database
+            activity_info = {
+                "name": label,
+                "type_id": extract_activity_type(label),
+                "hours": activity_hours,
+                "control_form_id": control_form_id
+            }
+            theme_data["activities"].append(activity_info)
             
             # Calculate row total and aggregate
             row_total = total_hours or (lectures + prac_lab_hours + self_work_hours)
@@ -152,7 +195,11 @@ def _extract_and_aggregate_data(input_file: str) -> tuple:
             grand_totals["lab"] += prac_lab_hours if label.startswith("Лабораторна") else 0
             grand_totals["self"] += self_work_hours
     
-    return sections, themes, grand_totals
+    # Default semester if not found
+    if semester_number is None:
+        semester_number = 5
+    
+    return sections, themes, grand_totals, semester_number
 
 
 def _build_structure_table(sections: list, themes: dict, grand_totals: dict) -> list:
@@ -342,17 +389,24 @@ def _auto_adjust_column_widths(ws):
 # Main Function
 # ============================================================================
 
-def generate_structure(input_file: str, output_file: str = "Структура.xlsx") -> None:
+def generate_structure(
+    input_file: str, 
+    output_file: str = "Структура.xlsx",
+    discipline_id: int = 1,
+    save_to_database: bool = True
+) -> None:
     """
-    Main ETL function: Extract → Transform → Load.
+    Main ETL function: Extract → Transform → Load (Excel + Database).
     
     Processes curriculum data from input Excel file and generates
-    a properly formatted structure workbook. Includes comprehensive
-    validation and error logging.
+    a properly formatted structure workbook. Optionally saves data
+    to PostgreSQL database. Includes comprehensive validation and error logging.
     
     Args:
         input_file: Path to input Excel file containing "План" sheet
         output_file: Path where output Excel file will be saved
+        discipline_id: ID of the discipline in database (default: 1)
+        save_to_database: Whether to save data to PostgreSQL (default: True)
         
     Raises:
         FileNotFoundError: If input file does not exist
@@ -386,14 +440,14 @@ def generate_structure(input_file: str, output_file: str = "Структура.x
     
     # === EXTRACT ===
     print("✓ Extracting and aggregating data...")
-    sections, themes, grand_totals = _extract_and_aggregate_data(input_file)
+    sections, themes, grand_totals, semester_number = _extract_and_aggregate_data(input_file)
     
     # === TRANSFORM ===
     print("✓ Transforming data...")
     structure_data = _build_structure_table(sections, themes, grand_totals)
     
-    # === LOAD ===
-    print("✓ Loading and formatting output...")
+    # === LOAD TO EXCEL ===
+    print("✓ Loading and formatting Excel output...")
     # Create workbook and worksheet
     workbook = Workbook()
     worksheet = workbook.active
@@ -412,15 +466,87 @@ def generate_structure(input_file: str, output_file: str = "Структура.x
     
     # Save workbook
     workbook.save(output_file)
+    print(f"  ✓ Excel file saved: {output_file}")
+    
+    # === LOAD TO DATABASE ===
+    db_stats = {"sections": 0, "themes": 0, "activities": 0}
+    
+    if save_to_database:
+        print("✓ Loading data to database...")
+        db_session = SessionLocal()
+        
+        try:
+            # Load reference data (idempotent - safe to call multiple times)
+            load_activity_types(db_session)
+            load_control_forms(db_session)
+            
+            # Find or create semester
+            semester_id = find_or_create_semester(db_session, semester_number)
+            
+            # Process sections → themes → activities
+            for section_name in sections:
+                # Save section
+                section_id = save_section(
+                    db_session,
+                    name=section_name,
+                    discipline_id=discipline_id,
+                    semester_id=semester_id
+                )
+                db_stats["sections"] += 1
+                
+                # Find all themes in this section
+                section_themes = [
+                    theme_data for key, theme_data in themes.items()
+                    if theme_data["section"] == section_name
+                ]
+                
+                for theme_data in section_themes:
+                    # Save theme
+                    theme_id = save_theme(
+                        db_session,
+                        name=theme_data["theme"],
+                        section_id=section_id,
+                        total_hours=int(theme_data["total"])
+                    )
+                    db_stats["themes"] += 1
+                    
+                    # Save individual activities
+                    for activity in theme_data["activities"]:
+                        save_activity(
+                            db_session,
+                            name=activity["name"],
+                            type_id=activity["type_id"],
+                            hours=activity["hours"],
+                            theme_id=theme_id,
+                            control_form_id=activity["control_form_id"]
+                        )
+                        db_stats["activities"] += 1
+            
+            # Commit all changes
+            commit_changes(db_session)
+            print(f"  ✓ Database load completed: {db_stats['sections']} sections, "
+                  f"{db_stats['themes']} themes, {db_stats['activities']} activities")
+            
+        except Exception as e:
+            db_session.rollback()
+            print(f"  ✗ Database load failed: {e}")
+            raise
+        finally:
+            db_session.close()
+    else:
+        print("  ⏭ Database load skipped (save_to_database=False)")
     
     # Success summary
     print(f"\n{'='*70}")
     print(f"✓ ETL PROCESS COMPLETED SUCCESSFULLY")
     print(f"{'='*70}")
     print(f"  Output file:    {output_file}")
+    print(f"  Semester:       {semester_number}")
     print(f"  Sections:       {len(sections)}")
     print(f"  Themes:         {len(themes)}")
     print(f"  Total hours:    {grand_totals['total']}")
+    if save_to_database:
+        print(f"  DB Activities:  {db_stats['activities']}")
     print(f"  Session ID:     {etl_session.session_id}")
     print(f"{'='*70}\n")
 
