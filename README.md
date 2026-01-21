@@ -2,6 +2,13 @@
 Automated ETL system for parsing teacher curriculum Excel files with database integration and change tracking 💻.
 
 ---
+![Python](https://img.shields.io/badge/Python-3.13-blue?style=flat&logo=python)
+![Flask](https://img.shields.io/badge/Flask-3.1.2-black?style=flat&logo=flask)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18-336791?style=flat&logo=postgresql)
+![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-2.0-red?style=flat&logo=sqlalchemy)
+![Pandas](https://img.shields.io/badge/Pandas-2.2-150458?style=flat&logo=pandas)
+![License](https://img.shields.io/badge/License-MIT-green?style=flat)
+![Status](https://img.shields.io/badge/Status-In_Development-yellow?style=flat)
 
 ## 🚀 Project Overview
 
