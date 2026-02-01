@@ -1,12 +1,7 @@
 .env
+\.env.test
 __pycache__/
 venv/
+.coverage
 НПр КН 2025.xlsx
 Структура.xlsx
-
-test_db_loader.py
-test_db_logging.py
-test_validation.py
-test_error_logging.py
-examples_logging.py
-test_cdc.py

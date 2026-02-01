@@ -6,3 +6,6 @@ openpyxl==3.1.5
 Flask==3.1.2
 flask-restful==0.3.10
 marshmallow==4.2.0
+pytest
+pytest-flask
+pytest-cov
