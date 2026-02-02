@@ -14,13 +14,10 @@ import os
 load_dotenv()
 
 
-# Use TEST_DATABASE_URL if set (for testing), else DATABASE_URL
+# Default to DATABASE_URL, use TEST_DATABASE_URL only when explicitly set
 DATABASE_URL = os.getenv(
-    "TEST_DATABASE_URL",
-    os.getenv(
-        "DATABASE_URL",
-        "postgresql+psycopg2://postgres:password@localhost:5432/curriculum_db"
-    )
+    "DATABASE_URL",
+    "postgresql+psycopg2://postgres:password@localhost:5432/curriculum_db"
 )
 
 # Create SQLAlchemy engine — the core interface to the database
