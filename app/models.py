@@ -55,6 +55,16 @@ class Lecturer(Base):
 
     disciplines = relationship("Discipline", back_populates="lecturer")
 
+# Student model
+class Student(Base):
+    __tablename__ = "students"
+
+    id = Column(Integer, primary_key=True)
+    full_name = Column(String(100), nullable=False)
+    email = Column(String(120), unique=True, nullable=False, index=True)
+    password_hash = Column(String(255), nullable=False)
+    role = Column(SQLEnum(RoleEnum), nullable=False, default=RoleEnum.viewer)
+
 
 # 2. Discipline (Course)
 class Discipline(Base):

@@ -18,7 +18,6 @@ CREATE TABLE IF NOT EXISTS control_forms (
     name VARCHAR(50) NOT NULL UNIQUE
 );
 
--- Main tables
 CREATE TABLE IF NOT EXISTS lecturers (
     id            INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     full_name     VARCHAR(100) NOT NULL,
@@ -26,6 +25,18 @@ CREATE TABLE IF NOT EXISTS lecturers (
     password_hash VARCHAR(255) NOT NULL,
     role          VARCHAR(20) NOT NULL CHECK (role IN ('admin','lecturer','viewer'))
 );
+
+-- Students table
+CREATE TABLE IF NOT EXISTS students (
+    id INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    full_name VARCHAR(100) NOT NULL,
+    email VARCHAR(120) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    role VARCHAR(20) NOT NULL CHECK (role IN ('admin','lecturer','viewer'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_students_email 
+    ON students(email);
 
 CREATE TABLE IF NOT EXISTS disciplines (
     id           INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
