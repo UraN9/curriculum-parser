@@ -16,6 +16,10 @@ class Config:
     SECRET_KEY = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
     DEBUG = os.getenv('FLASK_DEBUG', 'False').lower() in ('true', '1', 'yes')
     
+    # JWT Configuration
+    JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', 'jwt-secret-key-change-in-production')
+    JWT_EXPIRATION_HOURS = int(os.getenv('JWT_EXPIRATION_HOURS', '24'))
+    
     # Database (reuse from existing .env)
     DB_USER = os.getenv('DB_USER', 'curriculum_user')
     DB_PASSWORD = os.getenv('DB_PASSWORD', 'curriculum_pass')

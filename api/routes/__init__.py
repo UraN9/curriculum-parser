@@ -19,9 +19,15 @@ def register_routes(api: Api):
     from api.routes.sections import SectionListResource, SectionResource
     from api.routes.themes import ThemeListResource, ThemeResource
     from api.routes.activities import ActivityListResource, ActivityResource
+    from api.routes.auth import AuthRegister, AuthLogin, AuthMe
     
     # Health check
     api.add_resource(HealthResource, '/health')
+    
+    # Authentication
+    api.add_resource(AuthRegister, '/auth/register')
+    api.add_resource(AuthLogin, '/auth/login')
+    api.add_resource(AuthMe, '/auth/me')
     
     # Disciplines
     api.add_resource(DisciplineListResource, '/disciplines')
