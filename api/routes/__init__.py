@@ -44,3 +44,14 @@ def register_routes(api: Api):
     # Activities
     api.add_resource(ActivityListResource, '/activities')
     api.add_resource(ActivityResource, '/activities/<int:id>')
+
+
+def register_etl_routes(app):
+    """
+    Register ETL Blueprint routes.
+    
+    Args:
+        app: Flask application instance
+    """
+    from api.routes.etl import etl_bp
+    app.register_blueprint(etl_bp, url_prefix='/api/etl')

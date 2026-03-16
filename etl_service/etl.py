@@ -600,5 +600,239 @@ def generate_structure(
 # Entry Point
 # ============================================================================
 
+def run_etl_pipeline(
+    input_file: str,
+    discipline_id: int = 1,
+    output_file: str = None,
+    idempotent: bool = True
+) -> dict:
+    """
+    Run ETL pipeline with idempotent support for async execution.
+    
+    This is the main entry point for async ETL tasks. It wraps
+    generate_structure() and returns statistics for tracking.
+    
+    Args:
+        input_file: Path to input Excel file
+        discipline_id: ID of the discipline in database
+        output_file: Optional output file path (default: Структура.xlsx)
+        idempotent: If True, use UPSERT logic (default: True)
+        
+    Returns:
+        dict: Result with statistics:
+            - records_processed: Total records processed
+            - records_created: New records created
+            - records_updated: Existing records updated
+            - records_skipped: Records skipped (validation errors)
+            - summary: Dict with detailed counts by entity type
+    """
+    if output_file is None:
+        output_file = "Структура.xlsx"
+    
+    # Track statistics
+    stats = {
+        'records_processed': 0,
+        'records_created': 0,
+        'records_updated': 0,
+        'records_skipped': 0,
+        'summary': {}
+    }
+    
+    # Create ETL session for this run
+    etl_session = ETLSession(file_name=input_file)
+    print(f"\n📊 Starting ETL pipeline (idempotent={idempotent}): {etl_session}")
+    
+    # Load the plan sheet
+    try:
+        df_plan = pd.read_excel(input_file, sheet_name="План", header=None)
+    except FileNotFoundError:
+        raise FileNotFoundError(f"Input file not found: {input_file}")
+    except ValueError as e:
+        raise ValueError(f"Sheet 'План' not found in {input_file}")
+    
+    # === VALIDATE ===
+    print("\n✓ Validating data...")
+    validation_result = validate_plan_data(df_plan)
+    print(format_validation_report(validation_result))
+    
+    # Log validation errors/warnings
+    db_session = SessionLocal()
+    try:
+        if validation_result.errors or validation_result.warnings:
+            for issue in validation_result.errors:
+                log_validation_error(
+                    db_session=db_session,
+                    message=issue.message,
+                    row_number=issue.row_number,
+                    field_name=issue.column,
+                    source_data=issue.issue_type,
+                    etl_session_id=etl_session.session_id,
+                    file_name=input_file,
+                    severity=SEVERITY_ERROR
+                )
+            for issue in validation_result.warnings:
+                log_validation_error(
+                    db_session=db_session,
+                    message=issue.message,
+                    row_number=issue.row_number,
+                    field_name=issue.column,
+                    source_data=issue.issue_type,
+                    etl_session_id=etl_session.session_id,
+                    file_name=input_file,
+                    severity=SEVERITY_WARNING
+                )
+            db_session.commit()
+            stats['records_skipped'] = len(validation_result.errors)
+        
+        if not validation_result.is_valid:
+            raise ValueError(
+                f"Validation failed with {validation_result.error_count} critical error(s)."
+            )
+        
+        # === EXTRACT ===
+        print("✓ Extracting and aggregating data...")
+        sections, themes, grand_totals, semester_number = _extract_and_aggregate_data(input_file)
+        
+        # === TRANSFORM ===
+        print("✓ Transforming data...")
+        structure_data = _build_structure_table(sections, themes, grand_totals)
+        
+        # === LOAD TO EXCEL ===
+        print("✓ Loading and formatting Excel output...")
+        workbook = Workbook()
+        worksheet = workbook.active
+        worksheet.title = "Структура"
+        
+        section_row_indices = _write_data_to_worksheet(worksheet, structure_data)
+        _merge_header_cells(worksheet)
+        _merge_section_cells(worksheet, section_row_indices)
+        _apply_header_formatting(worksheet)
+        _apply_content_formatting(worksheet)
+        _apply_summary_row_styling(worksheet)
+        _auto_adjust_column_widths(worksheet)
+        workbook.save(output_file)
+        print(f"  ✓ Excel file saved: {output_file}")
+        
+        # === LOAD TO DATABASE (IDEMPOTENT) ===
+        print("✓ Loading data to database...")
+        
+        # Load reference data (idempotent)
+        load_activity_types(db_session)
+        load_control_forms(db_session)
+        
+        # Track created/updated
+        created_sections = 0
+        created_themes = 0
+        created_activities = 0
+        updated_themes = 0
+        updated_activities = 0
+        
+        # Find or create semester
+        semester_id = find_or_create_semester(db_session, semester_number)
+        
+        # Process sections → themes → activities
+        for section_name in sections:
+            # Check if section exists
+            from app.models import Section, Theme, Activity
+            existing_section = db_session.query(Section).filter_by(
+                name=section_name,
+                discipline_id=discipline_id,
+                semester_id=semester_id
+            ).first()
+            
+            section_id = save_section(
+                db_session,
+                name=section_name,
+                discipline_id=discipline_id,
+                semester_id=semester_id
+            )
+            
+            if not existing_section:
+                created_sections += 1
+            
+            # Find all themes in this section
+            section_themes = [
+                theme_data for key, theme_data in themes.items()
+                if theme_data["section"] == section_name
+            ]
+            
+            for theme_data in section_themes:
+                # Check if theme exists
+                existing_theme = db_session.query(Theme).filter_by(
+                    name=theme_data["theme"],
+                    section_id=section_id
+                ).first()
+                
+                theme_id = save_theme(
+                    db_session,
+                    name=theme_data["theme"],
+                    section_id=section_id,
+                    total_hours=int(theme_data["total"])
+                )
+                
+                if existing_theme:
+                    updated_themes += 1
+                else:
+                    created_themes += 1
+                
+                # Save individual activities
+                for activity in theme_data["activities"]:
+                    existing_activity = db_session.query(Activity).filter_by(
+                        name=activity["name"],
+                        theme_id=theme_id
+                    ).first()
+                    
+                    save_activity(
+                        db_session,
+                        name=activity["name"],
+                        type_id=activity["type_id"],
+                        hours=activity["hours"],
+                        theme_id=theme_id,
+                        control_form_id=activity["control_form_id"]
+                    )
+                    
+                    if existing_activity:
+                        updated_activities += 1
+                    else:
+                        created_activities += 1
+        
+        # Commit all changes
+        commit_changes(db_session)
+        
+        # Update stats
+        stats['records_processed'] = created_sections + created_themes + created_activities + updated_themes + updated_activities
+        stats['records_created'] = created_sections + created_themes + created_activities
+        stats['records_updated'] = updated_themes + updated_activities
+        stats['summary'] = {
+            'sections': {'created': created_sections},
+            'themes': {'created': created_themes, 'updated': updated_themes},
+            'activities': {'created': created_activities, 'updated': updated_activities},
+            'semester': semester_number
+        }
+        
+        print(f"  ✓ Database load completed:")
+        print(f"    - Sections: {created_sections} created")
+        print(f"    - Themes: {created_themes} created, {updated_themes} updated")
+        print(f"    - Activities: {created_activities} created, {updated_activities} updated")
+        
+        # Refresh summary views
+        print("✓ Refreshing summary views...")
+        refresh_result = refresh_summaries(db_session)
+        if refresh_result["success"]:
+            print(f"  ✓ Refreshed {refresh_result['views_refreshed']} materialized views")
+        
+        print(f"\n{'='*70}")
+        print(f"✓ ETL PIPELINE COMPLETED SUCCESSFULLY")
+        print(f"{'='*70}\n")
+        
+        return stats
+        
+    except Exception as e:
+        db_session.rollback()
+        raise
+    finally:
+        db_session.close()
+
+
 if __name__ == "__main__":
     generate_structure("НПр КН 2025.xlsx")

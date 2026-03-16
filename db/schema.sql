@@ -143,6 +143,35 @@ CREATE TABLE IF NOT EXISTS etl_errors (
     resolved BOOLEAN DEFAULT FALSE
 );
 
+-- ETL Job tracking table (for async jobs)
+CREATE TABLE IF NOT EXISTS etl_jobs (
+    id INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    task_id VARCHAR(255) NOT NULL UNIQUE,
+    
+    -- Job metadata
+    input_file VARCHAR(255) NOT NULL,
+    discipline_id INT REFERENCES disciplines(id),
+    user_id INT,
+    
+    -- Status tracking
+    status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (
+        status IN ('pending', 'running', 'completed', 'failed', 'retrying')
+    ),
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    started_at TIMESTAMP,
+    completed_at TIMESTAMP,
+    
+    -- Statistics (for idempotent tracking)
+    records_processed INT DEFAULT 0,
+    records_created INT DEFAULT 0,
+    records_updated INT DEFAULT 0,
+    records_skipped INT DEFAULT 0,
+    
+    -- Result/Error
+    result_summary TEXT,
+    error_message TEXT
+);
+
 -- ============================================================================
 -- Indexes
 -- ============================================================================
@@ -184,5 +213,15 @@ CREATE INDEX IF NOT EXISTS idx_activities_control_form_id
 
 CREATE INDEX IF NOT EXISTS idx_schedule_activity_id 
     ON schedule(activity_id);
+
+-- Indexes for etl_jobs
+CREATE INDEX IF NOT EXISTS idx_etl_jobs_task_id 
+    ON etl_jobs(task_id);
+
+CREATE INDEX IF NOT EXISTS idx_etl_jobs_status 
+    ON etl_jobs(status);
+
+CREATE INDEX IF NOT EXISTS idx_etl_jobs_created_at 
+    ON etl_jobs(created_at DESC);
 
 COMMIT;

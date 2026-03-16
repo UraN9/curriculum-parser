@@ -7,3 +7,5 @@ htmlcov/
 НПр КН 2025.xlsx
 Структура.xlsx
 scripts/
+test_etl_api.py
+~$*.xlsx
