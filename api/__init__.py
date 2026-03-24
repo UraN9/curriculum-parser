@@ -26,9 +26,12 @@ def create_app(config_class=Config):
     api = Api(app, prefix='/api')
     
     # Register routes
-    from api.routes import register_routes, register_etl_routes
+    from api.routes import register_routes, register_etl_routes, register_upload_routes, register_topics_routes, register_schedule_routes
     register_routes(api)
     register_etl_routes(app)
+    register_upload_routes(app)
+    register_topics_routes(app)
+    register_schedule_routes(app)
     
     # Health check endpoint (without /api prefix)
     @app.route('/health')

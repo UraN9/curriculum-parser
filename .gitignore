@@ -8,4 +8,6 @@ htmlcov/
 Структура.xlsx
 scripts/
 test_etl_api.py
+test_manual.py
 ~$*.xlsx
+uploads/

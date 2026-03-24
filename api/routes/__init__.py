@@ -17,8 +17,6 @@ def register_routes(api: Api):
     from api.routes.health import HealthResource
     from api.routes.disciplines import DisciplineListResource, DisciplineResource
     from api.routes.sections import SectionListResource, SectionResource
-    from api.routes.themes import ThemeListResource, ThemeResource
-    from api.routes.activities import ActivityListResource, ActivityResource
     from api.routes.auth import AuthRegister, AuthLogin, AuthMe
     
     # Health check
@@ -36,14 +34,6 @@ def register_routes(api: Api):
     # Sections
     api.add_resource(SectionListResource, '/sections')
     api.add_resource(SectionResource, '/sections/<int:id>')
-    
-    # Themes
-    api.add_resource(ThemeListResource, '/themes')
-    api.add_resource(ThemeResource, '/themes/<int:id>')
-    
-    # Activities
-    api.add_resource(ActivityListResource, '/activities')
-    api.add_resource(ActivityResource, '/activities/<int:id>')
 
 
 def register_etl_routes(app):
@@ -55,3 +45,36 @@ def register_etl_routes(app):
     """
     from api.routes.etl import etl_bp
     app.register_blueprint(etl_bp, url_prefix='/api/etl')
+
+
+def register_upload_routes(app):
+    """
+    Register Upload Blueprint routes.
+    
+    Args:
+        app: Flask application instance
+    """
+    from api.routes.upload import upload_bp
+    app.register_blueprint(upload_bp, url_prefix='/api/upload')
+
+
+def register_topics_routes(app):
+    """
+    Register Topics Blueprint routes.
+    
+    Args:
+        app: Flask application instance
+    """
+    from api.routes.topics import topics_bp
+    app.register_blueprint(topics_bp, url_prefix='/api/topics')
+
+
+def register_schedule_routes(app):
+    """
+    Register Schedule Blueprint routes.
+    
+    Args:
+        app: Flask application instance
+    """
+    from api.routes.schedule import schedule_bp
+    app.register_blueprint(schedule_bp, url_prefix='/api/schedule')
