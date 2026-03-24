@@ -60,3 +60,49 @@ def app():
 @pytest.fixture
 def client(app):
     return app.test_client()
+
+
+@pytest.fixture
+def db_session():
+    """
+    Create a fresh database session for each test.
+    
+    Automatically rolls back changes after each test.
+    """
+    from app.database import SessionLocal
+    session = SessionLocal()
+    
+    yield session
+    
+    session.rollback()
+    session.close()
+
+
+@pytest.fixture
+def auth_headers(client, db_session):
+    """
+    Create auth headers with a valid JWT token for testing protected endpoints.
+    """
+    import uuid
+    from api.auth import hash_password, generate_token
+    from app.models import Student
+    
+    # Create test user with unique email
+    unique_email = f"etl_test_user_{uuid.uuid4().hex[:8]}@test.com"
+    test_user = Student(
+        full_name="ETL Test User",
+        email=unique_email,
+        password_hash=hash_password("testpass123")
+    )
+    db_session.add(test_user)
+    db_session.commit()
+    
+    # Generate token
+    token = generate_token(
+        user_id=test_user.id,
+        email=test_user.email,
+        role=test_user.role.value,
+        user_type="student"
+    )
+    
+    return {"Authorization": f"Bearer {token}"}

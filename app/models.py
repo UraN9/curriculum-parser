@@ -43,6 +43,15 @@ class SeverityEnum(str, enum.Enum):
     info = "info"
 
 
+class ETLJobStatus(str, enum.Enum):
+    """Status of an ETL job."""
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    RETRYING = "retrying"
+
+
 # 1. Lecturer
 class Lecturer(Base):
     __tablename__ = "lecturers"
@@ -202,3 +211,54 @@ class ETLError(Base):
     def __repr__(self) -> str:
         return (f"<ETLError(id={self.id}, severity={self.severity}, "
                 f"error_type={self.error_type}, message='{self.message[:50]}...')>")
+
+
+# 11. ETL Job (Async job tracking)
+class ETLJob(Base):
+    """
+    Tracks asynchronous ETL job execution.
+    
+    Stores:
+    - Task ID from Celery
+    - Job status and timing
+    - Processing statistics
+    - Error information on failure
+    """
+    __tablename__ = "etl_jobs"
+    
+    id = Column(Integer, primary_key=True)
+    task_id = Column(String(255), unique=True, nullable=False, index=True)
+    
+    # Job metadata
+    input_file = Column(String(255), nullable=False)
+    discipline_id = Column(Integer, ForeignKey("disciplines.id"), nullable=True)
+    user_id = Column(Integer, nullable=True)  # Who initiated the job
+    
+    # Status tracking
+    status = Column(SQLEnum(ETLJobStatus), nullable=False, default=ETLJobStatus.PENDING)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    
+    # Statistics (for idempotent tracking)
+    records_processed = Column(Integer, nullable=True, default=0)
+    records_created = Column(Integer, nullable=True, default=0)
+    records_updated = Column(Integer, nullable=True, default=0)
+    records_skipped = Column(Integer, nullable=True, default=0)
+    
+    # Result/Error
+    result_summary = Column(Text, nullable=True)
+    error_message = Column(Text, nullable=True)
+    
+    # Relationships
+    discipline = relationship("Discipline")
+    
+    def __repr__(self) -> str:
+        return f"<ETLJob(id={self.id}, task_id={self.task_id}, status={self.status})>"
+    
+    @property
+    def duration_seconds(self) -> float:
+        """Calculate job duration in seconds."""
+        if self.started_at and self.completed_at:
+            return (self.completed_at - self.started_at).total_seconds()
+        return None
