@@ -11,3 +11,4 @@ test_etl_api.py
 test_manual.py
 ~$*.xlsx
 uploads/
+coverage.xml

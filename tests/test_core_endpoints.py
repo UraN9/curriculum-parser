@@ -12,6 +12,89 @@ import io
 import uuid
 from datetime import datetime
 
+from app.models import (
+    Activity,
+    ActivityType,
+    ControlForm,
+    Discipline,
+    Lecturer,
+    Schedule,
+    Section,
+    Semester,
+    Theme,
+)
+
+
+def _seed_schedule_data(db_session):
+    lecturer = Lecturer(
+        full_name=f"Schedule Lecturer {uuid.uuid4().hex[:6]}",
+        email=f"schedule_{uuid.uuid4().hex[:8]}@test.com",
+        password_hash="hash",
+    )
+    db_session.add(lecturer)
+    db_session.commit()
+
+    discipline = Discipline(
+        name=f"Schedule Discipline {uuid.uuid4().hex[:6]}",
+        course=2,
+        ects_credits=5.0,
+        lecturer_id=lecturer.id,
+    )
+    db_session.add(discipline)
+    db_session.commit()
+
+    semester = Semester(number=3, weeks=16, hours_per_week=6)
+    db_session.add(semester)
+    db_session.commit()
+
+    section = Section(
+        name="Section A",
+        discipline_id=discipline.id,
+        semester_id=semester.id,
+    )
+    db_session.add(section)
+    db_session.commit()
+
+    theme = Theme(name="Theme A", section_id=section.id, total_hours=8)
+    db_session.add(theme)
+    db_session.commit()
+
+    activity_type = db_session.query(ActivityType).first()
+    if activity_type is None:
+        activity_type = ActivityType(name=f"Lecture-{uuid.uuid4().hex[:4]}")
+        db_session.add(activity_type)
+        db_session.commit()
+
+    control_form = db_session.query(ControlForm).first()
+    if control_form is None:
+        control_form = ControlForm(name=f"Exam-{uuid.uuid4().hex[:4]}")
+        db_session.add(control_form)
+        db_session.commit()
+
+    activity = Activity(
+        name="Intro Lecture",
+        type_id=activity_type.id,
+        hours=2,
+        theme_id=theme.id,
+        control_form_id=control_form.id,
+    )
+    db_session.add(activity)
+    db_session.commit()
+
+    schedule = Schedule(
+        day="monday",
+        pair_number=1,
+        room="101",
+        activity_id=activity.id,
+    )
+    db_session.add(schedule)
+    db_session.commit()
+
+    return {
+        "discipline": discipline,
+        "activity": activity,
+    }
+
 
 class TestFileUploadEndpoint:
     """Tests for file upload endpoint."""
@@ -123,6 +206,59 @@ class TestScheduleEndpoint:
         response = client.get('/api/schedule/types', headers=auth_headers)
         assert response.status_code == 200
         assert 'types' in response.json
+
+    def test_schedule_build_requires_dates(self, client, auth_headers):
+        response = client.get('/api/schedule/build', headers=auth_headers)
+        assert response.status_code == 400
+        assert response.json['error'] == 'Validation Error'
+
+    def test_schedule_build_for_semester_interval(self, client, auth_headers, db_session):
+        seeded = _seed_schedule_data(db_session)
+
+        response = client.get(
+            f"/api/schedule/build?start_date=2026-09-07&end_date=2026-09-14&discipline_id={seeded['discipline'].id}",
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 200
+        payload = response.json
+        assert payload['interval']['start_date'] == '2026-09-07'
+        assert payload['interval']['end_date'] == '2026-09-14'
+        assert payload['interval']['discipline_id'] == seeded['discipline'].id
+        assert payload['total'] == 2
+        assert len(payload['generated_schedule']) == 2
+        assert payload['generated_schedule'][0]['date'] == '2026-09-07'
+        assert payload['generated_schedule'][1]['date'] == '2026-09-14'
+        assert payload['generated_schedule'][0]['discipline_id'] == seeded['discipline'].id
+
+    def test_schedule_build_rejects_invalid_date_format(self, client, auth_headers):
+        response = client.get(
+            '/api/schedule/build?start_date=07-09-2026&end_date=2026-09-14',
+            headers=auth_headers,
+        )
+        assert response.status_code == 400
+        assert response.json['error'] == 'Validation Error'
+
+    def test_schedule_for_specific_date_and_discipline(self, client, auth_headers, db_session):
+        seeded = _seed_schedule_data(db_session)
+
+        response = client.get(
+            f"/api/schedule/discipline/{seeded['discipline'].id}/date/2026-09-07",
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 200
+        payload = response.json
+        assert payload['discipline_id'] == seeded['discipline'].id
+        assert payload['date'] == '2026-09-07'
+        assert payload['weekday'] == 'monday'
+        assert payload['total'] == 1
+        assert payload['schedule'][0]['activity_id'] == seeded['activity'].id
+
+    def test_schedule_for_specific_date_requires_valid_date(self, client, auth_headers):
+        response = client.get('/api/schedule/discipline/1/date/09-07-2026', headers=auth_headers)
+        assert response.status_code == 400
+        assert response.json['error'] == 'Validation Error'
 
 
 class TestEndpointIntegration:
