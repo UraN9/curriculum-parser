@@ -11,3 +11,6 @@ test_etl_api.py
 test_manual.py
 ~$*.xlsx
 uploads/
+coverage.xml
+CLAUDE.md
+npr_do_2025.xlsx

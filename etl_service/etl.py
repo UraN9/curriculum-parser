@@ -22,7 +22,7 @@ from openpyxl.styles import Font, Alignment, PatternFill
 from openpyxl.utils import get_column_letter
 import uuid
 
-from .validation import validate_plan_data, format_validation_report
+from .validation import validate_plan_data, format_validation_report, detect_column_map
 from .etl_logger import ETLSession, log_validation_error, SEVERITY_ERROR, SEVERITY_WARNING
 from .db_loader import (
     load_activity_types,
@@ -53,10 +53,6 @@ THEME_MARKER = "Тема"
 ACTIVITY_TYPES = ("Лекція", "Лабораторна", "Практична", "Самостійна")
 SUMMARY_KEYWORDS = ("РОЗДІЛ", "РАЗОМ", "ВСЬОГО")
 
-HOUR_COLUMN_TOTAL = 1
-HOUR_COLUMN_LECTURES = 3
-HOUR_COLUMN_PRACTICAL_LAB = 4
-HOUR_COLUMN_SELF_WORK = 5
 
 
 # ============================================================================
@@ -98,7 +94,16 @@ def _extract_and_aggregate_data(input_file: str) -> tuple:
     """
     # Load plan sheet without headers
     df_plan = pd.read_excel(input_file, sheet_name="План", header=None)
-    
+
+    # Detect column positions from header rows; fall back to positional defaults
+    col_map = detect_column_map(df_plan)
+    total_col = col_map["total"]
+    lec_col   = col_map["lectures"]
+    prac_col  = col_map["practical_lab"]
+    lab_col   = col_map.get("lab", prac_col)   # separate lab column if available
+    self_col  = col_map["self_work"]
+    ctrl_col  = col_map.get("control_form", 6)
+
     # Initialize aggregation structures
     sections = []
     themes = {}
@@ -110,31 +115,25 @@ def _extract_and_aggregate_data(input_file: str) -> tuple:
         "individual": 0,
         "self": 0
     }
-    
+
     current_section = None
     current_theme = None
-    semester_number = None  # Will be extracted from "X СЕМЕСТР" row
-    
-    # Column index for control form (Column G = index 6)
-    CONTROL_FORM_COLUMN = 6
-    
+    semester_number = None
+
     # Parse each row in the plan sheet
     for _, row in df_plan.iterrows():
         label = str(row[0]).strip() if pd.notnull(row[0]) else ""
-        
-        # Detect semester row (e.g., "5 СЕМЕСТР")
+
         if "СЕМЕСТР" in label and semester_number is None:
             semester_number = extract_semester_number(label)
             continue
-        
-        # Detect section header
+
         if label.startswith("РОЗДІЛ"):
             current_section = label
             sections.append(current_section)
-            current_theme = None  # Reset theme when moving to new section
+            current_theme = None
             continue
-        
-        # Detect theme header
+
         if label.startswith("Тема"):
             current_theme = label
             key = (current_section, current_theme)
@@ -144,39 +143,35 @@ def _extract_and_aggregate_data(input_file: str) -> tuple:
                 theme_data["theme"] = current_theme
                 themes[key] = theme_data
             continue
-        
-        # Process activity rows (Лекція, Лабораторна, etc.)
+
         if current_theme and any(label.startswith(activity) for activity in ACTIVITY_TYPES):
-            # Extract hours from columns with safe defaults
-            total_hours = row[HOUR_COLUMN_TOTAL] if pd.notnull(row[HOUR_COLUMN_TOTAL]) else 0
-            lectures = row[HOUR_COLUMN_LECTURES] if pd.notnull(row[HOUR_COLUMN_LECTURES]) else 0
-            prac_lab_hours = row[HOUR_COLUMN_PRACTICAL_LAB] if pd.notnull(row[HOUR_COLUMN_PRACTICAL_LAB]) else 0
-            self_work_hours = row[HOUR_COLUMN_SELF_WORK] if pd.notnull(row[HOUR_COLUMN_SELF_WORK]) else 0
-            
-            # Extract control form from column G
-            control_form_value = row[CONTROL_FORM_COLUMN] if len(row) > CONTROL_FORM_COLUMN else None
+            n = len(row)
+            total_hours     = row[total_col] if total_col < n and pd.notnull(row[total_col]) else 0
+            lectures        = row[lec_col]   if lec_col   < n and pd.notnull(row[lec_col])   else 0
+            prac_hours      = row[prac_col]  if prac_col  < n and pd.notnull(row[prac_col])  else 0
+            lab_hours       = row[lab_col]   if lab_col   < n and pd.notnull(row[lab_col])   else 0
+            self_work_hours = row[self_col]  if self_col  < n and pd.notnull(row[self_col])  else 0
+            control_form_value = row[ctrl_col] if ctrl_col < n else None
             control_form_id = extract_control_form(control_form_value)
-            
+
             key = (current_section, current_theme)
             theme_data = themes[key]
-            
-            # Determine activity hours based on type
+
             if label.startswith("Лекція"):
                 activity_hours = int(lectures) if lectures else 0
                 theme_data["lectures"] += lectures
             elif label.startswith(("Практична", "Семінарська")):
-                activity_hours = int(prac_lab_hours) if prac_lab_hours else 0
-                theme_data["practical"] += prac_lab_hours
+                activity_hours = int(prac_hours) if prac_hours else 0
+                theme_data["practical"] += prac_hours
             elif label.startswith("Лабораторна"):
-                activity_hours = int(prac_lab_hours) if prac_lab_hours else 0
-                theme_data["lab"] += prac_lab_hours
+                activity_hours = int(lab_hours) if lab_hours else 0
+                theme_data["lab"] += lab_hours
             elif label.startswith("Самостійна"):
                 activity_hours = int(self_work_hours) if self_work_hours else 0
                 theme_data["self"] += self_work_hours
             else:
                 activity_hours = 0
-            
-            # Store individual activity for database
+
             activity_info = {
                 "name": label,
                 "type_id": extract_activity_type(label),
@@ -184,22 +179,19 @@ def _extract_and_aggregate_data(input_file: str) -> tuple:
                 "control_form_id": control_form_id
             }
             theme_data["activities"].append(activity_info)
-            
-            # Calculate row total and aggregate
-            row_total = total_hours or (lectures + prac_lab_hours + self_work_hours)
+
+            row_total = total_hours or (lectures + prac_hours + self_work_hours)
             theme_data["total"] += row_total
-            
-            # Update global totals
-            grand_totals["total"] += row_total
+
+            grand_totals["total"]    += row_total
             grand_totals["lectures"] += lectures
-            grand_totals["practical"] += prac_lab_hours if label.startswith("Практична") else 0
-            grand_totals["lab"] += prac_lab_hours if label.startswith("Лабораторна") else 0
-            grand_totals["self"] += self_work_hours
-    
-    # Default semester if not found
+            grand_totals["practical"] += prac_hours if label.startswith("Практична") else 0
+            grand_totals["lab"]      += lab_hours if label.startswith("Лабораторна") else 0
+            grand_totals["self"]     += self_work_hours
+
     if semester_number is None:
         semester_number = 5
-    
+
     return sections, themes, grand_totals, semester_number
 
 
@@ -478,33 +470,36 @@ def generate_structure(
     # === EXTRACT ===
     print("✓ Extracting and aggregating data...")
     sections, themes, grand_totals, semester_number = _extract_and_aggregate_data(input_file)
-    
+
+    # Guard: abort if no hours were extracted (likely wrong column layout)
+    total_activity_hours = sum(
+        a["hours"] for td in themes.values() for a in td["activities"]
+    )
+    if total_activity_hours == 0 and themes:
+        raise ValueError(
+            "ETL розпізнав 0 годин для всіх активностей — можливо, "
+            "структура колонок у файлі відрізняється від очікуваної. "
+            "Перевірте, чи є в листі 'План' рядок із заголовками "
+            "('усього', 'лекції', 'самостійна')."
+        )
+
     # === TRANSFORM ===
     print("✓ Transforming data...")
     structure_data = _build_structure_table(sections, themes, grand_totals)
-    
-    # === LOAD TO EXCEL ===
-    print("✓ Loading and formatting Excel output...")
-    # Create workbook and worksheet
+
+    # === PREPARE EXCEL (in memory — saved to disk after successful DB commit) ===
+    print("✓ Preparing Excel output...")
     workbook = Workbook()
     worksheet = workbook.active
     worksheet.title = "Структура"
-    
-    # Write data and get section row positions
     section_row_indices = _write_data_to_worksheet(worksheet, structure_data)
-    
-    # Apply formatting
     _merge_header_cells(worksheet)
     _merge_section_cells(worksheet, section_row_indices)
     _apply_header_formatting(worksheet)
     _apply_content_formatting(worksheet)
     _apply_summary_row_styling(worksheet)
     _auto_adjust_column_widths(worksheet)
-    
-    # Save workbook
-    workbook.save(output_file)
-    print(f"  ✓ Excel file saved: {output_file}")
-    
+
     # === LOAD TO DATABASE ===
     db_stats = {"sections": 0, "themes": 0, "activities": 0}
     
@@ -580,7 +575,11 @@ def generate_structure(
             db_session.close()
     else:
         print("  ⏭ Database load skipped (save_to_database=False)")
-    
+
+    # === SAVE EXCEL (only after DB succeeded to keep them in sync) ===
+    workbook.save(output_file)
+    print(f"  ✓ Excel file saved: {output_file}")
+
     # Success summary
     print(f"\n{'='*70}")
     print(f"✓ ETL PROCESS COMPLETED SUCCESSFULLY")
@@ -692,17 +691,28 @@ def run_etl_pipeline(
         # === EXTRACT ===
         print("✓ Extracting and aggregating data...")
         sections, themes, grand_totals, semester_number = _extract_and_aggregate_data(input_file)
-        
+
+        # Guard: abort if no hours were extracted (likely wrong column layout)
+        total_activity_hours = sum(
+            a["hours"] for td in themes.values() for a in td["activities"]
+        )
+        if total_activity_hours == 0 and themes:
+            raise ValueError(
+                "ETL розпізнав 0 годин для всіх активностей — можливо, "
+                "структура колонок у файлі відрізняється від очікуваної. "
+                "Перевірте, чи є в листі 'План' рядок із заголовками "
+                "('усього', 'лекції', 'самостійна')."
+            )
+
         # === TRANSFORM ===
         print("✓ Transforming data...")
         structure_data = _build_structure_table(sections, themes, grand_totals)
-        
-        # === LOAD TO EXCEL ===
-        print("✓ Loading and formatting Excel output...")
+
+        # === PREPARE EXCEL (in memory — saved after successful DB commit) ===
+        print("✓ Preparing Excel output...")
         workbook = Workbook()
         worksheet = workbook.active
         worksheet.title = "Структура"
-        
         section_row_indices = _write_data_to_worksheet(worksheet, structure_data)
         _merge_header_cells(worksheet)
         _merge_section_cells(worksheet, section_row_indices)
@@ -710,8 +720,6 @@ def run_etl_pipeline(
         _apply_content_formatting(worksheet)
         _apply_summary_row_styling(worksheet)
         _auto_adjust_column_widths(worksheet)
-        workbook.save(output_file)
-        print(f"  ✓ Excel file saved: {output_file}")
         
         # === LOAD TO DATABASE (IDEMPOTENT) ===
         print("✓ Loading data to database...")
@@ -820,13 +828,17 @@ def run_etl_pipeline(
         refresh_result = refresh_summaries(db_session)
         if refresh_result["success"]:
             print(f"  ✓ Refreshed {refresh_result['views_refreshed']} materialized views")
-        
+
+        # === SAVE EXCEL (only after DB succeeded to keep them in sync) ===
+        workbook.save(output_file)
+        print(f"  ✓ Excel file saved: {output_file}")
+
         print(f"\n{'='*70}")
         print(f"✓ ETL PIPELINE COMPLETED SUCCESSFULLY")
         print(f"{'='*70}\n")
-        
+
         return stats
-        
+
     except Exception as e:
         db_session.rollback()
         raise
@@ -835,4 +847,4 @@ def run_etl_pipeline(
 
 
 if __name__ == "__main__":
-    generate_structure("НПр КН 2025.xlsx")
+    generate_structure("npr_do_2025.xlsx")
