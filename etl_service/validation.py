@@ -49,13 +49,147 @@ class ValidationResult(NamedTuple):
 # Constants
 # ============================================================================
 
-# Column indices for hour data (0-based indexing)
+# Column indices for hour data (0-based indexing) — used as positional fallback
 HOUR_COLUMNS = {
     "total": 1,
     "lectures": 3,
     "practical_lab": 4,
     "self_work": 5,
 }
+
+# Ukrainian keywords for auto-detecting column positions from Excel header rows
+_DETECT_KEYWORDS = {
+    "total":         ["усього", "загальна кількість", "всього год"],
+    "lectures":      ["лекції", "лекц."],
+    "practical_lab": ["практичн", "семінарськ"],
+    "lab":           ["лаборатор"],
+    "self_work":     ["самостійна"],
+    "control_form":  ["форма контр", "вид контр", "контрол"],
+}
+
+# Activity label prefixes mapped to their hour field
+_ACTIVITY_TO_FIELD = [
+    ("Лекція",      "lectures"),
+    ("Практична",   "practical_lab"),
+    ("Семінарська", "practical_lab"),
+    ("Лабораторна", "practical_lab"),
+    ("Самостійна",  "self_work"),
+]
+
+
+def detect_column_map(df: pd.DataFrame, search_rows: int = 10) -> dict:
+    """
+    Auto-detect column positions using a two-pass strategy.
+
+    Pass 1 — header keyword scan: looks for Ukrainian column header words in the
+    first search_rows rows of df.
+
+    Pass 2 — data-driven scan: for any required column still missing after pass 1,
+    infers positions from actual data rows:
+      - "total"        → first positive numeric column in "Тема" rows.
+      - "lectures"     → positive numeric columns in "Лекція" rows (excluding total).
+      - "practical_lab"→ positive numeric columns in "Практична/Семінарська/Лабораторна" rows.
+      - "self_work"    → positive numeric columns in "Самостійна" rows.
+
+    Falls back to HOUR_COLUMNS positional defaults for fields still unresolved after
+    both passes.
+
+    Required result keys: total, lectures, practical_lab, self_work.
+    Optional result keys: lab (separate from practical_lab), control_form.
+    """
+    from collections import Counter
+
+    found: dict = {}
+
+    # Prefixes that identify data rows (not header rows); skip these in Pass 1
+    _DATA_ROW_PREFIXES = (
+        "лекція", "практична", "семінарська", "лабораторна",
+        "самостійна", "тема", "розділ", "семестр",
+    )
+
+    # --- Pass 1: header keyword scan ---
+    for row_idx in range(min(search_rows, len(df))):
+        # Skip rows that are clearly data rows (activity/section/theme labels)
+        row_label = str(df.iloc[row_idx, 0]).lower().strip() if pd.notnull(df.iloc[row_idx, 0]) else ""
+        if any(row_label.startswith(p) for p in _DATA_ROW_PREFIXES):
+            continue
+
+        for col_idx, val in enumerate(df.iloc[row_idx]):
+            if col_idx == 0:  # col 0 is always the name column, never a header for hours
+                continue
+            if pd.isnull(val):
+                continue
+            cell = str(val).lower().strip()
+
+            if "total" not in found and any(k in cell for k in _DETECT_KEYWORDS["total"]):
+                found["total"] = col_idx
+            if "lectures" not in found and any(k in cell for k in _DETECT_KEYWORDS["lectures"]):
+                found["lectures"] = col_idx
+            if "practical_lab" not in found and any(k in cell for k in _DETECT_KEYWORDS["practical_lab"]):
+                found["practical_lab"] = col_idx
+            if "lab" not in found and any(k in cell for k in _DETECT_KEYWORDS["lab"]):
+                found["lab"] = col_idx
+            if "self_work" not in found and any(k in cell for k in _DETECT_KEYWORDS["self_work"]):
+                found["self_work"] = col_idx
+            if "control_form" not in found and any(k in cell for k in _DETECT_KEYWORDS["control_form"]):
+                found["control_form"] = col_idx
+
+    if "lab" in found and "practical_lab" not in found:
+        found["practical_lab"] = found["lab"]
+
+    # --- Pass 2: data-driven scan for still-missing required columns ---
+    required = {"total", "lectures", "practical_lab", "self_work"}
+    missing = required - found.keys()
+
+    if missing:
+        type_cols: dict = {f: [] for f in missing}
+
+        # Sub-pass 2a: detect total from "Тема" rows (first positive numeric col)
+        if "total" in missing:
+            for _, row in df.iterrows():
+                label = str(row[0]).strip() if pd.notnull(row[0]) else ""
+                if label.startswith("Тема"):
+                    for ci in range(1, len(row)):
+                        v = row[ci]
+                        if pd.notnull(v) and isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0:
+                            type_cols["total"].append(ci)
+                            break
+            if type_cols["total"]:
+                found["total"] = Counter(type_cols["total"]).most_common(1)[0][0]
+            else:
+                # No Тема rows with data — use positional default
+                found["total"] = HOUR_COLUMNS["total"]
+
+        # Sub-pass 2b: detect type-specific cols from activity rows, excluding total
+        known_total = found.get("total")
+        missing = required - found.keys()   # recompute after total resolved
+
+        for _, row in df.iterrows():
+            label = str(row[0]).strip() if pd.notnull(row[0]) else ""
+            for prefix, field in _ACTIVITY_TO_FIELD:
+                if field in missing and label.startswith(prefix):
+                    for ci in range(1, len(row)):
+                        v = row[ci]
+                        if (pd.notnull(v) and isinstance(v, (int, float))
+                                and not isinstance(v, bool) and v > 0
+                                and ci != known_total):
+                            type_cols[field].append(ci)
+                    break
+
+        for field, cols in type_cols.items():
+            if cols and field not in found:
+                found[field] = Counter(cols).most_common(1)[0][0]
+
+    # --- Final: fill any still-missing fields with positional defaults ---
+    missing = required - found.keys()
+    if missing:
+        print(f"  ⚠ Column detection incomplete (not found: {missing}), using positional defaults")
+        for field in missing:
+            found[field] = HOUR_COLUMNS[field]
+
+    detected = {k: v for k, v in found.items() if k in required}
+    print(f"  ✓ Column map: {detected}")
+    return found
 
 # Keywords marking structural elements
 SECTION_MARKER = "РОЗДІЛ"
@@ -67,20 +201,23 @@ ACTIVITY_TYPES = ("Лекція", "Лабораторна", "Практична"
 # Validation Functions
 # ============================================================================
 
-def _validate_row_hours(row: pd.Series, row_num: int) -> List[ValidationIssue]:
+def _validate_row_hours(row: pd.Series, row_num: int, col_map: dict = None) -> List[ValidationIssue]:
     """
     Validate that hour values in a row are non-negative.
-    
+
     Args:
         row: Pandas series representing one row from the dataframe
         row_num: 1-based row number for reporting
-        
+        col_map: Column index mapping (uses HOUR_COLUMNS defaults if None)
+
     Returns:
         List of validation issues found (empty if all valid)
     """
     issues = []
-    
-    for col_name, col_idx in HOUR_COLUMNS.items():
+    active_cols = {k: v for k, v in (col_map or HOUR_COLUMNS).items()
+                   if k in ("total", "lectures", "practical_lab", "self_work")}
+
+    for col_name, col_idx in active_cols.items():
         if col_idx >= len(row):
             continue
             
@@ -143,27 +280,29 @@ def _validate_required_fields(row: pd.Series, row_num: int, label: str) -> List[
     return issues
 
 
-def _validate_hour_totals(row: pd.Series, row_num: int) -> List[ValidationIssue]:
+def _validate_hour_totals(row: pd.Series, row_num: int, col_map: dict = None) -> List[ValidationIssue]:
     """
     Validate that total hours match the sum of component hours.
-    
+
     Checks: total == (lectures + practical_lab + self_work)
-    
+
     Args:
         row: Pandas series representing one row
         row_num: 1-based row number for reporting
-        
+        col_map: Column index mapping (uses HOUR_COLUMNS defaults if None)
+
     Returns:
         List of validation issues found
     """
     issues = []
-    
+    cm = col_map or HOUR_COLUMNS
+
     # Extract hour values (default to 0 if missing)
     try:
-        total = float(row[HOUR_COLUMNS["total"]]) if pd.notnull(row[HOUR_COLUMNS["total"]]) else 0
-        lectures = float(row[HOUR_COLUMNS["lectures"]]) if pd.notnull(row[HOUR_COLUMNS["lectures"]]) else 0
-        practical_lab = float(row[HOUR_COLUMNS["practical_lab"]]) if pd.notnull(row[HOUR_COLUMNS["practical_lab"]]) else 0
-        self_work = float(row[HOUR_COLUMNS["self_work"]]) if pd.notnull(row[HOUR_COLUMNS["self_work"]]) else 0
+        total = float(row[cm["total"]]) if pd.notnull(row[cm["total"]]) else 0
+        lectures = float(row[cm["lectures"]]) if pd.notnull(row[cm["lectures"]]) else 0
+        practical_lab = float(row[cm["practical_lab"]]) if pd.notnull(row[cm["practical_lab"]]) else 0
+        self_work = float(row[cm["self_work"]]) if pd.notnull(row[cm["self_work"]]) else 0
     except (ValueError, TypeError):
         return issues  # Skip validation if values are non-numeric (caught by other validators)
     
@@ -211,26 +350,29 @@ def validate_plan_data(df: pd.DataFrame, skip_header_rows: int = 4) -> Validatio
     """
     errors = []
     warnings = []
-    
+
+    # Auto-detect column positions from the header rows
+    col_map = detect_column_map(df)
+
     # Validate each row (skip header rows)
     for idx, row in df.iterrows():
         row_num = idx + 1  # Convert to 1-based indexing for user display
-        
+
         # Skip header rows
         if row_num <= skip_header_rows:
             continue
-        
+
         # Extract label (section/theme name)
         label = str(row[0]).strip() if pd.notnull(row[0]) else ""
-        
+
         # Skip completely empty rows
         if not label and all(pd.isnull(v) for v in row):
             continue
-        
+
         # Run all validation checks
-        hour_issues = _validate_row_hours(row, row_num)
+        hour_issues = _validate_row_hours(row, row_num, col_map)
         field_issues = _validate_required_fields(row, row_num, label)
-        total_issues = _validate_hour_totals(row, row_num)
+        total_issues = _validate_hour_totals(row, row_num, col_map)
         
         # Collect all issues
         all_issues = hour_issues + field_issues + total_issues
