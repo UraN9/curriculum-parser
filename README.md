@@ -38,13 +38,14 @@ config:
 ---
 erDiagram
     LECTURER ||--o{ DISCIPLINE : "teaches<br>1 → N"
-    DISCIPLINE ||--o{ SEMESTER : "has<br>1 → N"
     DISCIPLINE ||--o{ SECTION : "contains<br>1 → N"
+    SEMESTER ||--o{ SECTION : "has<br>1 → N"
     SECTION ||--o{ THEME : "includes<br>1 → N"
     THEME ||--o{ ACTIVITY : "consists_of<br>1 → N"
     ACTIVITY }o--|| ACTIVITY_TYPE : "is_of_type<br>N → 1"
     ACTIVITY }o--|| CONTROL_FORM : "has_control<br>N → 1"
-    ACTIVITY ||--o{ SCHEDULE : "scheduled_in<br>1 → N"
+    ACTIVITY ||--o| SCHEDULE : "scheduled_in<br>1 → 0..1"
+    DISCIPLINE ||--o{ ETL_JOB : "jobs_for<br>1 → N"
     LECTURER {
         int id PK
         string full_name
@@ -100,6 +101,37 @@ erDiagram
         string room
         int activity_id FK
     }
+    ETL_JOB {
+        int id PK
+        string task_id
+        string input_file
+        int discipline_id FK
+        int user_id
+        string status
+        datetime created_at
+        datetime started_at
+        datetime completed_at
+        int records_processed
+        int records_created
+        int records_updated
+        int records_skipped
+        string result_summary
+        string error_message
+    }
+    ETL_ERROR {
+        int id PK
+        datetime timestamp
+        string error_type
+        string severity
+        int row_number
+        string field_name
+        string message
+        string source_data
+        string etl_session_id
+        string file_name
+        string stack_trace
+        bool resolved
+    }
 
 ```
 
@@ -108,6 +140,7 @@ erDiagram
 ## 📌 Entities
 
 * LECTURER
+* STUDENT
 * DISCIPLINE
 * SEMESTER
 * SECTION
@@ -116,12 +149,15 @@ erDiagram
 * ACTIVITY_TYPE
 * CONTROL_FORM
 * SCHEDULE
+* ETL_JOB
+* ETL_ERROR
 
 ---
 
 ## 📝 Attributes
 
 **LECTURER**: `id`, `full_name`, `email`, `password_hash`, `role`<br>
+**STUDENT**: `id`, `full_name`, `email`, `password_hash`, `role`<br>
 **DISCIPLINE**: `id`, `name`, `course`, `ects_credits`, `lecturer_id`<br>
 **SEMESTER**: `id`, `number`, `weeks`, `hours_per_week`<br>
 **SECTION**: `id`, `name`, `discipline_id`, `semester_id`<br>
@@ -129,7 +165,9 @@ erDiagram
 **ACTIVITY**: `id`, `name`, `type_id`, `hours`, `theme_id`, `control_form_id`<br>
 **ACTIVITY_TYPE**: `id`, `name`<br>
 **CONTROL_FORM**: `id`, `name`<br>
-**SCHEDULE**: `id`, `day`, `pair_number`, `room`, `activity_id`
+**SCHEDULE**: `id`, `day`, `pair_number`, `room`, `activity_id`<br>
+**ETL_JOB**: `id`, `task_id`, `input_file`, `discipline_id`, `user_id`, `status`, `created_at`, `started_at`, `completed_at`, `records_processed`, `records_created`, `records_updated`, `records_skipped`, `result_summary`, `error_message`<br>
+**ETL_ERROR**: `id`, `timestamp`, `error_type`, `severity`, `row_number`, `field_name`, `message`, `source_data`, `etl_session_id`, `file_name`, `stack_trace`, `resolved`
 
 
 ---
@@ -139,13 +177,14 @@ erDiagram
 | Entity 1   | Relationship | Entity 2      | Type  |
 | ---------- | ------------ | ------------- | ----- |
 | LECTURER   | teaches      | DISCIPLINE    | 1 → N |
-| DISCIPLINE | has          | SEMESTER      | 1 → N |
 | DISCIPLINE | contains     | SECTION       | 1 → N |
+| SEMESTER   | has          | SECTION       | 1 → N |
 | SECTION    | includes     | THEME         | 1 → N |
 | THEME      | consists_of  | ACTIVITY      | 1 → N |
 | ACTIVITY   | is_of_type   | ACTIVITY_TYPE | N → 1 |
 | ACTIVITY   | has_control  | CONTROL_FORM  | N → 1 |
-| ACTIVITY   | scheduled_in | SCHEDULE      | 1 → N |
+| ACTIVITY   | scheduled_in | SCHEDULE      | 1 → 0..1 |
+| DISCIPLINE | jobs_for     | ETL_JOB       | 1 → N |
 
 ---
 
@@ -177,13 +216,36 @@ erDiagram
 | pair_number     | INT          |
 | room            | VARCHAR      |
 | activity_id     | INT          |
+| task_id         | VARCHAR      |
+| input_file      | VARCHAR      |
+| user_id         | INT          |
+| status          | ENUM         |
+| created_at      | DATETIME     |
+| started_at      | DATETIME     |
+| completed_at    | DATETIME     |
+| records_processed | INT        |
+| records_created | INT          |
+| records_updated | INT          |
+| records_skipped | INT          |
+| result_summary  | TEXT         |
+| error_message   | TEXT         |
+| timestamp       | DATETIME     |
+| error_type      | ENUM         |
+| severity        | ENUM         |
+| row_number      | INT          |
+| field_name      | VARCHAR      |
+| source_data     | TEXT         |
+| etl_session_id  | UUID         |
+| file_name       | VARCHAR      |
+| stack_trace     | TEXT         |
+| resolved        | BOOLEAN      |
 
 ---
 
 ## ✅ Constraints
 
 * Primary Keys: `id` fields in all tables
-* Unique: `LECTURER.email`, `ACTIVITY_TYPE.name`, `CONTROL_FORM.name`
+* Unique: `LECTURER.email`, `STUDENT.email`, `ACTIVITY_TYPE.name`, `CONTROL_FORM.name`, `ETL_JOB.task_id`
 * Foreign Keys:
 
   * `DISCIPLINE.lecturer_id → LECTURER.id`
@@ -194,9 +256,11 @@ erDiagram
   * `ACTIVITY.theme_id → THEME.id`
   * `ACTIVITY.control_form_id → CONTROL_FORM.id`
   * `SCHEDULE.activity_id → ACTIVITY.id`
+    * `ETL_JOB.discipline_id → DISCIPLINE.id`
 * Checks:
 
-  * `LECTURER.role` IN ('admin','lecturer','viewer')
+    * `LECTURER.role` IN ('admin','lecturer','viewer')
+    * `STUDENT.role` IN ('admin','lecturer','viewer')
   * Numeric fields ≥ 0 where applicable
 
 * [Database Schema SQL](db/schema.sql)
